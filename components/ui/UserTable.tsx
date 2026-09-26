@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Button } from './Button';
 import { Icon } from './Icon';
 import { exportAsCSV, exportAsJSON } from '../../utils/fileUtils';
@@ -30,6 +30,7 @@ export const UserTable: React.FC<UserTableProps> = ({ title, userIds, userMap, o
   }, [users, searchTerm]);
 
   const totalPages = Math.ceil(filteredUsers.length / ITEMS_PER_PAGE);
+  useEffect(() => setCurrentPage(1), [userIds]);
   const paginatedUsers = filteredUsers.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
   const handleExportCSV = () => {
@@ -53,7 +54,8 @@ export const UserTable: React.FC<UserTableProps> = ({ title, userIds, userMap, o
       <div className="flex flex-col sm:flex-row gap-2 mb-4">
         <input
           type="text"
-          placeholder="Search..."
+          aria-label={`Search ${title}`}
+          placeholder="Search usernames"
           value={searchTerm}
           onChange={e => {
             setSearchTerm(e.target.value);
@@ -62,7 +64,7 @@ export const UserTable: React.FC<UserTableProps> = ({ title, userIds, userMap, o
           className="w-full sm:w-1/2 px-3 py-2 border border-gray-300 rounded-md dark:bg-gray-700 dark:border-gray-600 dark:text-white"
         />
         <div className="flex gap-2 flex-wrap">
-            <Button variant="secondary" onClick={handleCopy} title="Copy list to clipboard"><Icon name="copy" /></Button>
+            <Button variant="secondary" onClick={handleCopy} title="Copy list to clipboard" aria-label="Copy list to clipboard"><Icon name="copy" /></Button>
             <Button variant="secondary" onClick={handleExportCSV} title="Export as CSV"><Icon name="download" /> CSV</Button>
             <Button variant="secondary" onClick={handleExportJSON} title="Export as JSON"><Icon name="download" /> JSON</Button>
         </div>

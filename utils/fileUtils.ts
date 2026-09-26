@@ -1,24 +1,23 @@
-
-import { Snapshot } from '../types';
-
 const downloadFile = (filename: string, content: string, mimeType: string) => {
-  const element = document.createElement('a');
-  const file = new Blob([content], { type: mimeType });
-  element.href = URL.createObjectURL(file);
-  element.download = filename;
-  document.body.appendChild(element);
-  element.click();
-  document.body.removeChild(element);
+  const url = URL.createObjectURL(new Blob([content], { type: mimeType }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 };
 
-export const exportAsJSON = (data: object, filename: string) => {
-  downloadFile(filename, JSON.stringify(data, null, 2), 'application/json');
+export const exportAsJSON = (data: object, filename: string) => downloadFile(filename, JSON.stringify(data), 'application/json');
+
+export const csvCell = (value: string): string => {
+  const text = String(value);
+  const safe = /^[=+\-@\t\r\n]/.test(text) ? `'${text}` : text;
+  return `"${safe.replace(/"/g, '""')}"`;
 };
 
 export const exportAsCSV = (data: { headers: string[]; rows: string[][] }, filename: string) => {
-  const csvContent = [
-    data.headers.join(','),
-    ...data.rows.map(row => row.join(','))
-  ].join('\n');
-  downloadFile(filename, csvContent, 'text/csv;charset=utf-8;');
+  const content = [data.headers, ...data.rows].map(row => row.map(csvCell).join(',')).join('\r\n');
+  downloadFile(filename, content, 'text/csv;charset=utf-8;');
 };

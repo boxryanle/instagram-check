@@ -1,3 +1,13 @@
+export type RelationshipRole = 'followers' | 'following';
+export type ListCoverage = 'complete' | 'missing' | 'uncertain';
+export type Coverage = Record<RelationshipRole, ListCoverage>;
+
+export interface ImportContext {
+  accountUsername: string;
+  capturedAt?: string;
+  confirmedComplete: boolean;
+}
+
 
 export interface User {
   id: string; // canonical user id (or synthetic if CSV lacks id)
@@ -35,6 +45,9 @@ export interface SnapshotMeta {
 }
 
 export interface Snapshot {
+  accountUsername?: string;
+  capturedAt?: string;
+  coverage?: Coverage;
   id: string;
   createdAt: string;
   updatedAt?: string; // For tracking merges into partial snapshots
@@ -52,6 +65,8 @@ export interface ParsedCSVData {
 }
 
 export interface ProcessedFileData {
+    coverage?: Coverage;
+    source?: 'instagram-json' | 'csv' | 'simple-json';
     followers: Set<string>; // Set of user IDs
     following: Set<string>; // Set of user IDs
     users: Map<string, { username: string; fullName: string | null; }>; // Map of id -> user details from this file
@@ -68,6 +83,9 @@ export interface ProcessedFileData {
 
 
 export interface AnalysisData {
+  availability: Record<'followers' | 'following' | 'relationships' | 'followerChanges' | 'followingChanges' | 'relationshipChanges' | 'usernameChanges', { available: boolean; reason?: string }>;
+  counts: { followers: number | null; following: number | null; mutuals: number | null };
+  warnings: string[];
   newFollowers: string[];
   lostFollowers: string[];
   newlyFollowedByMe: string[];
