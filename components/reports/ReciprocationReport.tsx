@@ -10,10 +10,10 @@ interface ReciprocationReportProps {
   onViewList: (listType: string) => void;
 }
 
-const StatCard: React.FC<{ 
-    title: string; 
-    value: number | string; 
-    description?: string; 
+const StatCard: React.FC<{
+    title: string;
+    value: number | string;
+    description?: string;
     onAction?: () => void;
     actionLabel?: string;
 }> = ({ title, value, description, onAction, actionLabel }) => (
@@ -23,7 +23,7 @@ const StatCard: React.FC<{
         {description && <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 flex-grow">{description}</p>}
         {onAction && (
             <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-600">
-                <Button variant="ghost" size="sm" onClick={onAction} className="w-full text-xs">
+                <Button variant="ghost" onClick={onAction} className="w-full text-xs">
                     {actionLabel || 'View List'}
                 </Button>
             </div>
@@ -34,31 +34,33 @@ const StatCard: React.FC<{
 export const ReciprocationReport: React.FC<ReciprocationReportProps> = ({ analysis, onViewList }) => {
   return (
     <Card title="Relationship Status" icon={<Icon name="users" />}>
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-            <StatCard 
-                title="Mutuals" 
-                value={analysis.mutuals.length} 
-                description="You follow each other." 
+        {!analysis.availability.relationships.available ? (
+          <p className="text-gray-600 dark:text-gray-400">{analysis.availability.relationships.reason}</p>
+        ) : <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+            <StatCard
+                title="Mutuals"
+                value={analysis.mutuals.length}
+                description="You follow each other."
                 onAction={() => onViewList('mutuals')}
             />
-            <StatCard 
-                title="Not Following Me Back" 
-                value={analysis.notFollowingMeBack.length} 
+            <StatCard
+                title="Not Following Me Back"
+                value={analysis.notFollowingMeBack.length}
                 description="You follow them, they don't follow you."
                 onAction={() => onViewList('not-following-back')}
             />
-            <StatCard 
-                title="I Don't Follow Back" 
-                value={analysis.iDontFollowBack.length} 
+            <StatCard
+                title="I Don't Follow Back"
+                value={analysis.iDontFollowBack.length}
                 description="They follow you, you don't follow them."
                 onAction={() => onViewList('i-dont-follow-back')}
             />
-            <StatCard 
-                title="Follow-Back Ratio" 
-                value={`${(analysis.followBackRatio * 100).toFixed(1)}%`} 
+            <StatCard
+                title="Follow-Back Ratio"
+                value={analysis.counts.followers === 0 ? '—' : `${(analysis.followBackRatio * 100).toFixed(1)}%`}
                 description="The percentage of your followers that you also follow."
             />
-        </div>
+        </div>}
     </Card>
   );
 };

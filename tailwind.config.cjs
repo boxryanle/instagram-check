@@ -1,0 +1,1 @@
+module.exports = { content: ['./index.html', './App.tsx', './components/**/*.{ts,tsx}'], darkMode: 'class', theme: { extend: { colors: { primary: require('tailwindcss/colors').blue } } }, plugins: [] };

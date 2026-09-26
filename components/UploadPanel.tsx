@@ -1,302 +1,123 @@
-
-import React, { useState, useCallback, useReducer, useEffect, useRef } from 'react';
-import { ProcessedFileData, Snapshot } from '../types';
-import { processAndParseFile } from '../utils/csvParser';
+import React, { useMemo, useRef, useState } from 'react';
+import type { ImportContext, ProcessedFileData } from '../types';
+import { processImportFiles } from '../utils/importArchive';
 import { Button } from './ui/Button';
 import { Card } from './ui/Card';
 import { Icon } from './ui/Icon';
-import { Spinner } from './ui/Spinner';
-import { Modal } from './ui/Modal';
-
-const PENDING_SESSION_TIMEOUT = 5 * 60 * 1000; // 5 minutes
-
-type UploadState = {
-    followersFile: ProcessedFileData | null;
-    followingFile: ProcessedFileData | null;
-    isProcessing: boolean;
-    error: string | null;
-    warnings: string[];
-}
-type UploadAction = 
-    | { type: 'START_PROCESSING' }
-    | { type: 'ADD_FILE', payload: ProcessedFileData }
-    | { type: 'SET_ERROR', payload: string }
-    | { type: 'CLEAR_FILE', payload: 'followers' | 'following' }
-    | { type: 'RESET' }
-
-const initialState: UploadState = {
-    followersFile: null,
-    followingFile: null,
-    isProcessing: false,
-    error: null,
-    warnings: [],
-}
-
-const uploadReducer = (state: UploadState, action: UploadAction): UploadState => {
-    switch (action.type) {
-        case 'START_PROCESSING':
-            return { ...state, isProcessing: true, error: null };
-        case 'ADD_FILE': {
-            const file = action.payload;
-            let newState = {...state, isProcessing: false, warnings: [...state.warnings, ...file.warnings] };
-            if (file.role === 'followers') newState.followersFile = file;
-            if (file.role === 'following') newState.followingFile = file;
-            if (file.role === 'combined') {
-                newState.followersFile = file;
-                newState.followingFile = file;
-            }
-            if (file.role === 'unknown') {
-                return { ...state, isProcessing: false, error: file.warnings[0] || 'Could not determine file role.' }
-            }
-            return newState;
-        }
-        case 'SET_ERROR':
-            return { ...state, isProcessing: false, error: action.payload };
-        case 'CLEAR_FILE':
-            return { ...state, [action.payload === 'followers' ? 'followersFile' : 'followingFile']: null };
-        case 'RESET':
-            return initialState;
-        default:
-            return state;
-    }
-}
-
-const FileCard: React.FC<{fileData: ProcessedFileData, onClear: () => void}> = ({ fileData, onClear }) => (
-    <div className="p-3 bg-gray-50 dark:bg-gray-700 rounded-lg text-sm relative">
-        <button onClick={onClear} className="absolute top-1 right-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"><Icon name="x" className="w-4 h-4" /></button>
-        <p className="font-semibold text-gray-800 dark:text-gray-100 truncate">{fileData.fileInfo.name}</p>
-        <p className="capitalize text-primary-600 dark:text-primary-400 font-medium">{fileData.role}</p>
-        <div className="text-gray-600 dark:text-gray-300 grid grid-cols-2 gap-x-2 text-xs">
-            <span>Followers:</span><span>{fileData.followers.size}</span>
-            <span>Following:</span><span>{fileData.following.size}</span>
-        </div>
-    </div>
-);
-
-const DropZone: React.FC<{onDrop: (files: FileList) => void}> = ({onDrop}) => {
-    const [isDragging, setIsDragging] = useState(false);
-    const handleDragEnter = (e: React.DragEvent<HTMLDivElement>) => { e.preventDefault(); setIsDragging(true); };
-    const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => { e.preventDefault(); setIsDragging(false); };
-    const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => { e.preventDefault(); };
-    const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
-        e.preventDefault();
-        setIsDragging(false);
-        onDrop(e.dataTransfer.files);
-    };
-
-    return (
-        <div 
-            onDragEnter={handleDragEnter} 
-            onDragLeave={handleDragLeave} 
-            onDragOver={handleDragOver} 
-            onDrop={handleDrop}
-            className={`p-6 border-2 border-dashed rounded-lg text-center cursor-pointer transition-colors ${isDragging ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20' : 'border-gray-300 dark:border-gray-600 hover:border-primary-400'}`}
-        >
-            <Icon name="upload" className="mx-auto h-10 w-10 text-gray-400" />
-            <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">Drag & drop CSV or JSON files here</p>
-            <p className="text-xs text-gray-500 dark:text-gray-500">Supports Official Instagram Export (JSON/CSV)</p>
-        </div>
-    )
-}
-
-const FAST_IMPORT_SCRIPT = `
-/* Insta Tracker - Fast Import Script */
-/* Copy and paste this entire block into the Console tab of Developer Tools (F12) while on your Instagram profile page. */
-(async () => {
-    console.log("⏳ Starting Insta Tracker import...");
-    const username = window.location.pathname.replace(/\\//g, '');
-    if(!username) return alert("Please go to your Instagram profile page first.");
-    
-    alert("Note: This script is experimental. If it fails, please use the official 'Download Your Information' feature in Instagram Settings.");
-
-    // Simple extraction from shared data if available, otherwise warns user
-    // Real-time scraping code is complex and brittle. We will provide a link to the repo or instructions.
-    // For now, we will attempt to detect if the user has data loaded.
-    
-    // This is a placeholder for the actual fetching logic which is too large to embed reliably in a string without external deps.
-    // However, we can guide the user to a robust solution.
-    
-    const data = {
-        followers: [],
-        following: [],
-        timestamp: new Date().toISOString()
-    };
-
-    const confirmDownload = confirm("To get your data instantly without API access, you need to use a browser extension or a more advanced script. \\n\\nWould you like to download a template JSON that works with Insta Tracker instead?");
-    
-    if(confirmDownload) {
-       const blob = new Blob([JSON.stringify(data, null, 2)], {type : 'application/json'});
-       const a = document.createElement('a');
-       a.href = URL.createObjectURL(blob);
-       a.download = \`insta_tracker_\${username}.json\`;
-       a.click();
-    }
-})();
-`;
-
-// A more useful instruction set
-const SCRIPT_INSTRUCTIONS = `
-1. Go to instagram.com and log in.
-2. Navigate to your own profile page.
-3. Open Developer Tools (Press F12, or right-click > Inspect).
-4. Go to the "Console" tab.
-5. Copy the code below, paste it into the console, and press Enter.
-6. **Note:** Due to Instagram security, you may need to scroll down your followers list manually to load them before running a simple scraper, or use a dedicated Browser Extension like "IG Exporter" to generate a CSV/JSON file, which this app supports.
-`;
-
 
 interface UploadPanelProps {
-  onSave: (files: ProcessedFileData[]) => void;
-  onMerge: (partialSnapshot: Snapshot, file: ProcessedFileData) => void;
-  findLatestPartialToComplete: (file: ProcessedFileData) => Snapshot | undefined;
+  onSave: (files: ProcessedFileData[], context: ImportContext) => Promise<boolean>;
   isLoading: boolean;
+  initialAccount?: string;
 }
 
-export const UploadPanel: React.FC<UploadPanelProps> = ({ onSave, onMerge, findLatestPartialToComplete, isLoading }) => {
-    const [state, dispatch] = useReducer(uploadReducer, initialState);
-    const [sessionTimeoutId, setSessionTimeoutId] = useState<number | null>(null);
-    const [timeLeft, setTimeLeft] = useState(0);
-    const [showScriptModal, setShowScriptModal] = useState(false);
-    const fileInputRef = useRef<HTMLInputElement>(null);
-
-    // Countdown timer effect
-    useEffect(() => {
-        if (timeLeft > 0) {
-            const timer = setTimeout(() => setTimeLeft(timeLeft - 1), 1000);
-            return () => clearTimeout(timer);
-        } else if (sessionTimeoutId) {
-            handleSave();
-        }
-    }, [timeLeft]);
-    
-    const startPendingSession = () => {
-        if (sessionTimeoutId) clearTimeout(sessionTimeoutId);
-        setTimeLeft(PENDING_SESSION_TIMEOUT / 1000);
-        const timeoutId = window.setTimeout(() => {}, PENDING_SESSION_TIMEOUT);
-        setSessionTimeoutId(timeoutId);
+export const UploadPanel: React.FC<UploadPanelProps> = ({ onSave, isLoading, initialAccount = '' }) => {
+  const [files, setFiles] = useState<ProcessedFileData[]>([]);
+  const [processing, setProcessing] = useState(false);
+  const [error, setError] = useState('');
+  const [account, setAccount] = useState(initialAccount);
+  const [capturedAt, setCapturedAt] = useState('');
+  const [complete, setComplete] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const input = useRef<HTMLInputElement>(null);
+  const generation = useRef(0);
+  const busy = processing || saving || isLoading;
+  const summary = useMemo(() => {
+    const followers = new Set<string>();
+    const following = new Set<string>();
+    let hasFollowers = false;
+    let hasFollowing = false;
+    const warnings = new Set<string>();
+    for (const file of files) {
+      file.followers.forEach(id => followers.add(file.users.get(id)?.username ?? id));
+      file.following.forEach(id => following.add(file.users.get(id)?.username ?? id));
+      hasFollowers ||= file.role === 'followers' || file.role === 'combined';
+      hasFollowing ||= file.role === 'following' || file.role === 'combined';
+      file.warnings.forEach(warning => warnings.add(warning));
     }
+    return { followers: followers.size, following: following.size, hasFollowers, hasFollowing, warnings: [...warnings] };
+  }, [files]);
 
-    const clearPendingSession = () => {
-        if (sessionTimeoutId) clearTimeout(sessionTimeoutId);
-        setSessionTimeoutId(null);
-        setTimeLeft(0);
+  const process = async (selection: File[]) => {
+    if (!selection.length || busy) return;
+    const current = ++generation.current;
+    setProcessing(true);
+    setError('');
+    setFiles([]);
+    setComplete(false);
+    try {
+      const parsed = await processImportFiles(selection);
+      if (current === generation.current) setFiles(parsed);
+    } catch (e) {
+      if (current === generation.current) setError(e instanceof Error ? e.message : 'Unable to read this export.');
+    } finally {
+      if (current === generation.current) setProcessing(false);
+      if (input.current) input.current.value = '';
     }
+  };
 
-    const handleFileProcess = async (file: File) => {
-        try {
-            const processed = await processAndParseFile(file);
-            
-            const partialToComplete = findLatestPartialToComplete(processed);
-            if (partialToComplete) {
-                onMerge(partialToComplete, processed);
-                dispatch({type: 'RESET'});
-                return;
-            }
-
-            dispatch({ type: 'ADD_FILE', payload: processed });
-        } catch (err: any) {
-            dispatch({ type: 'SET_ERROR', payload: `Failed to process ${file.name}: ${err.message}` });
-        }
+  const save = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (busy || !files.length) return;
+    const username = account.trim().replace(/^@/, '').toLowerCase();
+    if (!/^(?!\.)(?!.*\.\.)(?!.*\.$)[a-z0-9._]{1,30}$/.test(username)) {
+      setError('Enter the Instagram username this export belongs to.');
+      return;
     }
-
-    const handleFileDrop = async (files: FileList) => {
-        if (files.length === 0 || files.length > 2) {
-            dispatch({ type: 'SET_ERROR', payload: 'Please upload 1 or 2 files.' });
-            return;
-        }
-        dispatch({ type: 'START_PROCESSING' });
-        await Promise.all(Array.from(files).map(handleFileProcess));
+    const date = capturedAt ? new Date(capturedAt) : undefined;
+    if (date && (!Number.isFinite(date.getTime()) || date.getTime() > Date.now())) {
+      setError('Choose an export date and time that is not in the future.');
+      return;
     }
+    setSaving(true);
+    setError('');
+    try {
+      const saved = await onSave(files, { accountUsername: username, capturedAt: date?.toISOString(), confirmedComplete: complete });
+      if (saved) { setFiles([]); setComplete(false); setCapturedAt(''); }
+      else setError('The snapshot was not saved. Your import preview is still here.');
+    } catch {
+      setError('The snapshot was not saved. Your import preview is still here.');
+    } finally { setSaving(false); }
+  };
 
-    useEffect(() => {
-        const hasOneFile = (state.followersFile && !state.followingFile) || (!state.followersFile && state.followingFile);
-        const hasTwoFiles = state.followersFile && state.followingFile;
-
-        if (hasTwoFiles) {
-            clearPendingSession();
-        } else if (hasOneFile) {
-            if (!sessionTimeoutId) startPendingSession();
-        } else {
-            clearPendingSession();
-        }
-    }, [state.followersFile, state.followingFile]);
-
-
-    const handleSave = () => {
-        const filesToSave = [state.followersFile, state.followingFile].filter(Boolean) as ProcessedFileData[];
-        if (filesToSave.length > 0) {
-            onSave(filesToSave);
-            dispatch({ type: 'RESET' });
-            clearPendingSession();
-        }
-    };
-  
-    const isReadyToSave = state.followersFile || state.followingFile;
-    const missingRole = !state.followersFile ? 'Followers' : 'Following';
-
-    return (
-        <Card title="Upload New Snapshot" icon={<Icon name="upload" />}>
-            <div className="space-y-4">
-                <div className="flex justify-end">
-                    <button onClick={() => setShowScriptModal(true)} className="text-xs text-primary-600 dark:text-primary-400 hover:underline flex items-center gap-1">
-                        <Icon name="users" className="w-3 h-3"/>
-                        Can't wait for export?
-                    </button>
-                </div>
-
-                <input type="file" multiple accept=".csv,.json" ref={fileInputRef} onChange={e => e.target.files && handleFileDrop(e.target.files)} className="hidden" />
-                <div onClick={() => fileInputRef.current?.click()}>
-                    <DropZone onDrop={handleFileDrop} />
-                </div>
-                
-                {state.isProcessing && <Spinner />}
-                {state.error && <p className="text-red-500 text-sm">{state.error}</p>}
-                
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {state.followersFile ? <FileCard fileData={state.followersFile} onClear={() => dispatch({type: 'CLEAR_FILE', payload: 'followers'})} /> : <div />}
-                    {state.followingFile ? <FileCard fileData={state.followingFile} onClear={() => dispatch({type: 'CLEAR_FILE', payload: 'following'})} /> : <div />}
-                </div>
-
-                {sessionTimeoutId && timeLeft > 0 && (
-                    <div className="p-3 bg-blue-50 dark:bg-blue-900/30 rounded-lg text-center">
-                        <p className="text-sm text-blue-700 dark:text-blue-300">Waiting for {missingRole} file...</p>
-                        <p className="text-lg font-mono font-bold text-blue-800 dark:text-blue-200">{Math.floor(timeLeft / 60)}:{(timeLeft % 60).toString().padStart(2, '0')}</p>
-                        <p className="text-xs text-blue-600 dark:text-blue-400">Snapshot will save as partial if time runs out.</p>
-                    </div>
-                )}
-                
-                {state.warnings.length > 0 && (
-                    <details className="text-sm">
-                        <summary className="cursor-pointer font-medium text-yellow-600 dark:text-yellow-400">
-                            {state.warnings.length} Parsing Warnings <span className="text-xs">(click to view)</span>
-                        </summary>
-                        <ul className="mt-2 list-disc pl-5 max-h-32 overflow-y-auto bg-white dark:bg-gray-800 p-2 rounded">
-                        {state.warnings.map((w, i) => <li key={i} className="text-yellow-700 dark:text-yellow-500">{w}</li>)}
-                        </ul>
-                    </details>
-                )}
-
-                <Button onClick={handleSave} disabled={!isReadyToSave || isLoading} className="w-full">
-                    {isLoading ? 'Saving...' : 'Save Snapshot'}
-                </Button>
-            </div>
-
-            <Modal isOpen={showScriptModal} onClose={() => setShowScriptModal(false)} title="Instant Data Import">
-                <div className="space-y-4">
-                    <p className="text-sm text-gray-600 dark:text-gray-300">
-                        Instagram restricts direct access to your data. The official way is to request a <strong>JSON</strong> export from "Your Activity" settings, which this app supports.
-                    </p>
-                    <p className="text-sm text-gray-600 dark:text-gray-300">
-                        To get data <strong>instantly</strong>, we recommend using a browser extension like <em>"IG Exporter"</em> or <em>"Growman"</em> to download your followers as a CSV/JSON, then drop that file here.
-                    </p>
-                    
-                    <div className="p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded border border-yellow-200 dark:border-yellow-800">
-                        <p className="text-xs text-yellow-800 dark:text-yellow-200 font-medium">
-                             We now support <strong>JSON files</strong>! You can upload the `followers_1.json` and `following.json` files directly from the official Instagram zip export.
-                        </p>
-                    </div>
-                </div>
-            </Modal>
-        </Card>
-    );
+  return (
+    <Card title="Import Instagram export" icon={<Icon name="upload" />}>
+      <div className="space-y-5">
+        <p className="text-sm text-gray-600 dark:text-gray-300">Import your own downloaded archive. Files are processed on this device; Instagram login is not needed here.</p>
+        <details className="border border-gray-300 dark:border-gray-600 rounded-md p-3">
+          <summary className="cursor-pointer font-medium">How to get your Instagram export</summary>
+          <ol className="list-decimal pl-5 mt-3 space-y-2 text-sm">
+            <li>In Instagram settings, open Meta Account or Accounts Center, then Your information and permissions.</li>
+            <li>Choose Export your information, create an export for your account, and select Export to device.</li>
+            <li>Select Followers and following, the All time date range, and JSON format.</li>
+            <li>Download the archive when Instagram makes it available, then choose that ZIP below.</li>
+          </ol>
+          <p className="mt-3 text-sm"><a className="text-primary-700 dark:text-primary-300 underline" href="https://help.instagram.com/181231772500920/" target="_blank" rel="noopener noreferrer">Instagram’s official export instructions</a></p>
+          <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">Menu names may vary. This app does not scrape Instagram or collect session cookies.</p>
+        </details>
+        <div onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); void process(Array.from(e.dataTransfer.files)); }} className="p-5 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-md">
+          <label htmlFor="relationship-files" className="block font-medium mb-2">Choose a ZIP, or all related JSON / CSV files together</label>
+          <input id="relationship-files" ref={input} type="file" multiple accept=".zip,.json,.csv" disabled={busy} onChange={e => void process(Array.from(e.target.files ?? []))} className="block w-full text-sm file:mr-3 file:px-3 file:py-2 file:rounded-md file:border file:border-gray-300 file:bg-white file:text-gray-800" />
+          <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">You can also drop files here. A new selection replaces the import preview. Backups belong in Settings.</p>
+        </div>
+        {processing && <p role="status" className="text-sm">Reading your files…</p>}
+        {error && <p role="alert" className="text-sm text-red-700 dark:text-red-300">{error}</p>}
+        {files.length > 0 && <form onSubmit={save} className="space-y-4">
+          <div className="flex flex-wrap gap-6 text-sm" aria-label="Import preview">
+            <p>Followers: <strong>{summary.hasFollowers ? summary.followers.toLocaleString() : 'Missing'}</strong></p>
+            <p>Following: <strong>{summary.hasFollowing ? summary.following.toLocaleString() : 'Missing'}</strong></p>
+            <p>{files.length} relationship {files.length === 1 ? 'file' : 'files'}</p>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div><label htmlFor="import-account" className="block text-sm font-medium mb-1">Your Instagram username</label><input id="import-account" autoComplete="off" required maxLength={31} value={account} disabled={busy} onChange={e => setAccount(e.target.value)} className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800" /><p className="text-xs mt-1 text-gray-600 dark:text-gray-300">Confirm which of your accounts this export belongs to.</p></div>
+            <div><label htmlFor="export-time" className="block text-sm font-medium mb-1">Export date and time (optional)</label><input id="export-time" type="datetime-local" value={capturedAt} disabled={busy} onChange={e => setCapturedAt(e.target.value)} onInput={e => setCapturedAt(e.currentTarget.value)} className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800" /><p className="text-xs mt-1 text-gray-600 dark:text-gray-300">Your local time. If unknown, charts use the import time.</p></div>
+          </div>
+          <label className="flex gap-3 items-start text-sm"><input type="checkbox" checked={complete} disabled={busy} onChange={e => setComplete(e.target.checked)} className="mt-1" /><span>I included all files for each supplied list, selected All time, and reviewed the counts. These lists are complete for this export.</span></label>
+          {(!complete || !summary.hasFollowers || !summary.hasFollowing) && <p className="text-sm text-amber-800 dark:text-amber-200">You can save this import, but comparisons that require missing or unconfirmed lists will stay unavailable.</p>}
+          {summary.warnings.length > 0 && <details className="text-sm"><summary className="cursor-pointer font-medium">Review {summary.warnings.length} import {summary.warnings.length === 1 ? 'warning' : 'warnings'}</summary><ul className="list-disc pl-5 mt-2 space-y-1">{summary.warnings.map((warning, i) => <li key={i}>{warning}</li>)}</ul></details>}
+          <div className="flex gap-3"><Button type="submit" disabled={busy}>{saving ? 'Saving…' : 'Save snapshot'}</Button><Button type="button" variant="secondary" disabled={busy} onClick={() => { setFiles([]); setError(''); setComplete(false); }}>Discard preview</Button></div>
+        </form>}
+      </div>
+    </Card>
+  );
 };
