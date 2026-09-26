@@ -21,6 +21,22 @@ npm run preview
 
 The preview uses `http://127.0.0.1:4173`. `dist/` is a static website that needs HTTPS when hosted; localhost is also supported. `npm run build` includes TypeScript checking. GitHub Actions runs the tests/build and retains the static build as an artifact. Pushing to GitHub does not deploy the existing Cloud Run app.
 
+## Container deployment
+
+The Dockerfile builds the site and serves it with unprivileged nginx on port 8080. Base images are pinned by digest. Build for Cloud Run’s Linux amd64 platform:
+
+```sh
+docker build --platform=linux/amd64 -t instagram-check:local .
+docker run --rm --network=none instagram-check:local nginx -t
+docker run --rm -p 127.0.0.1:8080:8080 instagram-check:local
+```
+
+The build context is an explicit source-file allowlist in `.dockerignore`. Add new source paths there when needed. No API key, mounted source directory, or server database is needed. The document is revalidated; hashed assets use immutable caching; missing paths return 404.
+
+An AI Studio-managed Cloud Run deployment may include proxy-specific configuration. Before taking over deployment, review a new revision’s complete configuration, preserve service access settings and the existing origin, and keep the prior revision for rollback. Start with a zero-traffic preview revision and validate it before a traffic cutover. Future AI Studio publishing can conflict with an externally managed release. Do not delete the previous deployment’s mounted resources during migration.
+
+`.dockerignore` limits Docker’s context, not a Cloud Build source upload. If using `gcloud --source`, separately restrict its upload with a reviewed `.gcloudignore` or a source-only staging directory. Export browser history before a production update; server rollback does not reverse a browser database upgrade.
+
 ## Import your account
 
 1. Follow [Instagram’s official export instructions](https://help.instagram.com/181231772500920/). Choose your own profile, export to your device, select **Followers and following**, **All time**, and **JSON**. Menu names may vary.

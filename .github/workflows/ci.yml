@@ -23,3 +23,10 @@ jobs:
           name: insta-tracker-static
           path: dist
           retention-days: 7
+  container:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build --platform=linux/amd64 --tag instagram-check:ci .
+      - run: docker run --rm --network=none instagram-check:ci nginx -t
